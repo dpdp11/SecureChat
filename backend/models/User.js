@@ -4,13 +4,18 @@ const UserSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
-    unique: true // Already ensuring unique usernames
+    unique: true
   },
   password: {
     type: String,
     required: true
   },
-  friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
+  friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  clearedChats: {
+    type: Map,
+    of: Date,
+    default: {}
+  }
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);
