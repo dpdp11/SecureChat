@@ -126,9 +126,9 @@ function Dashboard() {
   };
 
   return (
-    <div className="dashboard-container" style={{ alignItems: 'flex-start', paddingTop: '1rem', width: '100%', padding: '1rem', boxSizing: 'border-box' }} onClick={() => setDeleteConfirm({ friendId: null, step: 0 })}>
+    <div className="dashboard-container" style={{ flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', paddingTop: '2rem', width: '100%', padding: '1rem', boxSizing: 'border-box' }} onClick={() => setDeleteConfirm({ friendId: null, step: 0 })}>
       
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '900px', margin: '0 auto 1.5rem auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '900px', margin: '0 auto 2rem auto' }}>
         <h1 style={{ 
           margin: 0,
           background: 'linear-gradient(to right, #58a6ff, #a371f7)',
