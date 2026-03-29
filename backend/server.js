@@ -47,6 +47,13 @@ io.on('connection', (socket) => {
 
   socket.on('send_message', async (data) => {
     try {
+      const User = require('./models/User');
+      const senderObj = await User.findById(data.senderId);
+      
+      if (!senderObj.friends.includes(data.receiverId)) {
+        return; // Reject messages if they broke friendship
+      }
+
       const newMessage = new Message({
         sender: data.senderId,
         receiver: data.receiverId,

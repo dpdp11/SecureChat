@@ -41,39 +41,78 @@ router.post('/add-friend', async (req, res) => {
   }
 });
 
-// Get friends and determine active chats
+// Remove friend
+router.post('/remove-friend', async (req, res) => {
+  try {
+    const { userId, friendId } = req.body;
+    await User.findByIdAndUpdate(userId, { $pull: { friends: friendId } });
+    await User.findByIdAndUpdate(friendId, { $pull: { friends: userId } });
+    res.json({ message: 'Friend removed' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get user profile specifically
+router.get('/user/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('_id username');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get friends and decoupled active chats
 router.get('/friends/:userId', async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId).populate('friends', '_id username');
+    const userId = req.params.userId;
+    const user = await User.findById(userId).populate('friends', '_id username');
     
-    // Determine active chats (where latest message createdAt > clearedAt)
-    const friendsWithStatus = await Promise.all(user.friends.map(async (friend) => {
-      const clearedAt = user.clearedChats?.get(friend._id.toString()) || new Date(0);
-      const latestMsg = await Message.findOne({
-        $or: [
-          { sender: user._id, receiver: friend._id },
-          { sender: friend._id, receiver: user._id }
-        ],
-        createdAt: { $gt: clearedAt }
-      }).sort('-createdAt');
+    // 1. Get ALL messages involving the user to determine independent conversational history
+    const messages = await Message.find({
+      $or: [{ sender: userId }, { receiver: userId }]
+    }).populate('sender', '_id username').populate('receiver', '_id username');
+    
+    const partnerMap = new Map();
+    messages.forEach(msg => {
+      const isSender = msg.sender._id.toString() === userId;
+      const partner = isSender ? msg.receiver : msg.sender;
+      if (!partner) return;
+      const pId = partner._id.toString();
       
-      return {
-        _id: friend._id,
-        username: friend.username,
-        hasActiveChat: !!latestMsg,
-        latestMessageAt: latestMsg ? latestMsg.createdAt : null
-      };
-    }));
-
-    // Sort by latest msg
-    friendsWithStatus.sort((a, b) => {
-      if (a.latestMessageAt && b.latestMessageAt) return b.latestMessageAt - a.latestMessageAt;
-      if (a.latestMessageAt) return -1;
-      if (b.latestMessageAt) return 1;
-      return 0;
+      if (!partnerMap.has(pId)) {
+        partnerMap.set(pId, { _id: partner._id, username: partner.username, latestMsg: msg });
+      } else {
+        if (new Date(msg.createdAt) > new Date(partnerMap.get(pId).latestMsg.createdAt)) {
+          partnerMap.get(pId).latestMsg = msg;
+        }
+      }
     });
 
-    res.json(friendsWithStatus);
+    // Determine post-clear active chats
+    const activeChats = [];
+    partnerMap.forEach(partner => {
+      const clearedAt = user.clearedChats?.get(partner._id.toString()) || new Date(0);
+      if (new Date(partner.latestMsg.createdAt) > clearedAt) {
+        activeChats.push({
+          _id: partner._id,
+          username: partner.username,
+          hasActiveChat: true,
+          latestMessageAt: partner.latestMsg.createdAt
+        });
+      }
+    });
+
+    // Map strict friends independently
+    const allFriends = user.friends.map(f => ({
+      _id: f._id,
+      username: f.username,
+    }));
+
+    activeChats.sort((a, b) => new Date(b.latestMessageAt) - new Date(a.latestMessageAt));
+
+    res.json({ friends: allFriends, activeChats });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Server error' });
