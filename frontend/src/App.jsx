@@ -4,6 +4,7 @@ import { AuthProvider, AuthContext } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ChatRoom from './pages/ChatRoom';
+import AdminDashboard from './pages/AdminDashboard';
 
 const PrivateRoute = ({ children }) => {
   const { token } = useContext(AuthContext);
@@ -20,6 +21,14 @@ function AppContent() {
           element={
             <PrivateRoute>
               <Dashboard />
+            </PrivateRoute>
+          } 
+        />
+        <Route 
+          path="/admin" 
+          element={
+            <PrivateRoute>
+              <AdminDashboard />
             </PrivateRoute>
           } 
         />

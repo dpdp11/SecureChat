@@ -11,6 +11,9 @@ function ChatRoom() {
   const [inputMessage, setInputMessage] = useState('');
   const [friendDetails, setFriendDetails] = useState(null);
   
+  const [userState, setUserState] = useState('none'); // 'friend', 'pending', 'blocked', 'none'
+  const [sentCount, setSentCount] = useState(0);
+
   const [replyingTo, setReplyingTo] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [activeMenuId, setActiveMenuId] = useState(null);
@@ -24,15 +27,30 @@ function ChatRoom() {
     const loadData = async () => {
       try {
         const res = await fetch(`https://securechat-u1nk.onrender.com/api/users/friends/${user.id}`);
-        const friendsList = await res.json();
-        const friend = friendsList.find(f => f._id === friendId);
-        if (friend) setFriendDetails(friend);
+        const data = await res.json();
+        
+        const isFriend = (data.friends || []).some(f => f._id === friendId);
+        const isSentReq = (data.sentRequests || []).some(f => f._id === friendId);
+        const isRecvReq = (data.receivedRequests || []).some(f => f._id === friendId);
+        const isBlocked = (data.blockedUsers || []).some(f => f._id === friendId);
+        
+        if (isBlocked) setUserState('blocked');
+        else if (isFriend) setUserState('friend');
+        else if (isSentReq || isRecvReq) setUserState('pending');
+        else setUserState('none');
+
+        const userRes = await fetch(`https://securechat-u1nk.onrender.com/api/users/user/${friendId}`);
+        const fallbackUser = await userRes.json();
+        setFriendDetails(fallbackUser);
         
         const histRes = await fetch(`https://securechat-u1nk.onrender.com/api/messages/history/${user.id}/${friendId}`);
         const histData = await histRes.json();
         setMessages(histData);
         
-        if (socket) {
+        const myMessages = histData.filter(m => m.sender._id === user.id).length;
+        setSentCount(myMessages);
+
+        if (socket && isFriend) {
           socket.emit('mark_read', { userId: user.id, friendId });
         }
       } catch (err) {
@@ -53,12 +71,16 @@ function ChatRoom() {
         (data.sender._id === user.id && data.receiver._id === friendId) || 
         (data.sender._id === friendId && data.receiver._id === user.id)
       ) {
-        setMessages((prev) => [...prev, data]);
-        if (data.sender._id === friendId) {
+        setMessages((prev) => {
+          const newMessages = [...prev, data];
+          setSentCount(newMessages.filter(m => m.sender._id === user.id).length);
+          return newMessages;
+        });
+        
+        if (data.sender._id === friendId && userState === 'friend') {
            socket.emit('mark_read', { userId: user.id, friendId });
         }
         
-        // Auto scroll if near bottom
         if (chatContainerRef.current) {
           const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
           if (scrollHeight - scrollTop - clientHeight < 150) {
@@ -79,17 +101,22 @@ function ChatRoom() {
       }
     };
 
+    const handleError = (msg) => {
+      alert(`Server Notice: ${msg}`);
+    };
+
     socket.on('receive_message', handleReceive);
     socket.on('message_edited', handleEditReceive);
+    socket.on('chat_error', handleError);
     
     return () => {
       socket.off('receive_message', handleReceive);
       socket.off('message_edited', handleEditReceive);
+      socket.off('chat_error', handleError);
     };
-  }, [socket, user, friendId]);
+  }, [socket, user, friendId, userState]);
 
   useEffect(() => {
-    // Initial fetch scroll
     setTimeout(() => {
       messagesEndRef.current?.scrollIntoView();
     }, 100);
@@ -97,7 +124,11 @@ function ChatRoom() {
 
   const sendMessage = (e) => {
     e.preventDefault();
-    if (inputMessage.trim() === '') return;
+    if (inputMessage.trim() === '' || userState === 'blocked' || userState === 'none') return;
+    if (userState === 'pending' && sentCount >= 10) {
+       alert("Limit of 10 messages reached. Wait for them to accept the request.");
+       return;
+    }
 
     if (editingMessage) {
       socket.emit('edit_message', {
@@ -127,19 +158,21 @@ function ChatRoom() {
   };
 
   const handleReply = (msg) => {
+    if (userState === 'blocked' || userState === 'none') return;
     setReplyingTo(msg);
     setEditingMessage(null);
     setInputMessage('');
     setActiveMenuId(null);
-    setTimeout(() => inputRef.current?.focus(), 100); // Autofocus input
+    setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   const handleEdit = (msg) => {
+    if (userState === 'blocked' || userState === 'none') return;
     setEditingMessage(msg);
     setReplyingTo(null);
     setInputMessage(msg.text);
     setActiveMenuId(null);
-    setTimeout(() => inputRef.current?.focus(), 100); // Autofocus input
+    setTimeout(() => inputRef.current?.focus(), 100);
   };
 
   const cancelAction = () => {
@@ -193,11 +226,17 @@ function ChatRoom() {
             </span>
           </div>
         </div>
-        <button className="btn btn-secondary" onClick={() => navigate('/dashboard')}>Back to Friends</button>
+        <button className="btn btn-secondary" onClick={() => navigate('/dashboard')}>Back</button>
       </div>
 
       <div className="glass-panel messages-area" style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', padding: 0 }}>
         
+        {userState === 'pending' && (
+          <div style={{ background: '#ff9800', color: '#fff', padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', fontWeight: 'bold', zIndex: 10 }}>
+            Friend request pending. {10 - sentCount > 0 ? (10 - sentCount) : 0}/10 message limit active.
+          </div>
+        )}
+
         <div 
           ref={chatContainerRef}
           onScroll={handleScroll}
@@ -213,7 +252,7 @@ function ChatRoom() {
                 key={msg._id || idx} 
                 id={`msg-${msg._id}`}
                 className={`message ${isSelf ? 'self' : 'other'}`}
-                style={{ position: 'relative', paddingBottom: '1rem', minWidth: '220px' }}
+                style={{ position: 'relative', paddingBottom: '1rem', minWidth: '220px', opacity: (userState === 'friend' || userState === 'pending') ? 1 : 0.8 }}
               >
                 {/* Arrow Button */}
                 <button 
@@ -256,9 +295,13 @@ function ChatRoom() {
                     boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
                   }}>
                     <button onClick={() => handleCopy(msg.text)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', padding: '0.6rem 1rem', cursor: 'pointer', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>Copy</button>
-                    <button onClick={() => handleReply(msg)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', padding: '0.6rem 1rem', cursor: 'pointer', textAlign: 'left' }}>Reply</button>
-                    {isSelf && (
-                      <button onClick={() => handleEdit(msg)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', padding: '0.6rem 1rem', cursor: 'pointer', textAlign: 'left', borderTop: '1px solid rgba(255,255,255,0.05)' }}>Edit</button>
+                    {(userState === 'friend' || userState === 'pending') && (
+                      <>
+                        <button onClick={() => handleReply(msg)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', padding: '0.6rem 1rem', cursor: 'pointer', textAlign: 'left' }}>Reply</button>
+                        {isSelf && (
+                          <button onClick={() => handleEdit(msg)} style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', padding: '0.6rem 1rem', cursor: 'pointer', textAlign: 'left', borderTop: '1px solid rgba(255,255,255,0.05)' }}>Edit</button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -286,7 +329,6 @@ function ChatRoom() {
                   </div>
                 )}
 
-                {/* Message Header */}
                 <div 
                   style={{ 
                     display: 'flex', 
@@ -303,7 +345,6 @@ function ChatRoom() {
                   </div>
                 </div>
 
-                {/* Message Text */}
                 <div style={{ lineHeight: '1.4' }}>{msg.text}</div>
               </div>
             );
@@ -311,27 +352,10 @@ function ChatRoom() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Scroll to bottom button */}
         {showScrollButton && (
           <button 
             onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
-            style={{
-              position: 'absolute',
-              bottom: '90px',
-              right: '25px',
-              background: 'var(--accent)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '50%',
-              width: '40px',
-              height: '40px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              zIndex: 5
-            }}
+            style={{ position: 'absolute', bottom: '90px', right: '25px', background: 'var(--accent)', color: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 5 }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
@@ -339,35 +363,42 @@ function ChatRoom() {
           </button>
         )}
 
-        {/* Input Area Wrapper */}
-        <div style={{ borderTop: '1px solid var(--glass-border)', background: 'var(--panel-bg)' }} onClick={(e) => e.stopPropagation()}>
-          {(replyingTo || editingMessage) && (
-            <div style={{ padding: '0.5rem 1rem', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-              <span>
-                {replyingTo && <>Replying to <strong>{replyingTo.sender.username}</strong>: {replyingTo.text.substring(0, 30)}{replyingTo.text.length > 30 ? '...' : ''}</>}
-                {editingMessage && <>Editing message...</>}
-              </span>
-              <button 
-                onClick={cancelAction} 
-                className="btn btn-secondary" 
-                style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', border: 'none' }}
-              >
-                Cancel
-              </button>
+        {/* Dynamic Content Footer */}
+        <div style={{ borderTop: '1px solid var(--glass-border)', background: 'var(--panel-bg)', minHeight: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+          {userState === 'blocked' ? (
+            <div style={{ color: '#ffb3b3', fontStyle: 'italic', fontSize: '0.9rem', width: '100%', textAlign: 'center', padding: '1rem', background: 'rgba(255,0,0,0.1)' }}>
+              Messaging blocked.
             </div>
+          ) : userState === 'none' ? (
+             <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.9rem', width: '100%', textAlign: 'center', padding: '1rem' }}>
+              You are no longer friends with this user. Messaging disabled.
+             </div>
+          ) : (
+             <div style={{ width: '100%' }}>
+               {(replyingTo || editingMessage) && (
+                 <div style={{ padding: '0.5rem 1rem', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                   <span>
+                     {replyingTo && <>Replying to <strong>{replyingTo.sender.username}</strong>: {replyingTo.text.substring(0, 30)}{replyingTo.text.length > 30 ? '...' : ''}</>}
+                     {editingMessage && <>Editing message...</>}
+                   </span>
+                   <button onClick={cancelAction} className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', border: 'none' }}>Cancel</button>
+                 </div>
+               )}
+               <form onSubmit={sendMessage} className="input-area" style={{ padding: '1rem', display: 'flex', gap: '1rem', margin: 0 }}>
+                 <input 
+                   type="text" 
+                   ref={inputRef}
+                   className="input-field" 
+                   placeholder={editingMessage ? "Edit your message..." : (userState === 'pending' && sentCount >= 10 ? "Limit reached..." : "Type a message...")} 
+                   value={inputMessage}
+                   onChange={(e) => setInputMessage(e.target.value)}
+                   style={{ marginBottom: 0, flex: 1 }}
+                   disabled={userState === 'pending' && sentCount >= 10}
+                 />
+                 <button type="submit" className="btn" disabled={userState === 'pending' && sentCount >= 10}>{editingMessage ? 'Save' : 'Send'}</button>
+               </form>
+             </div>
           )}
-          <form onSubmit={sendMessage} className="input-area" style={{ padding: '1rem', display: 'flex', gap: '1rem', margin: 0 }}>
-            <input 
-              type="text" 
-              ref={inputRef}
-              className="input-field" 
-              placeholder={editingMessage ? "Edit your message..." : "Type a message..."} 
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              style={{ marginBottom: 0, flex: 1 }}
-            />
-            <button type="submit" className="btn">{editingMessage ? 'Save' : 'Send'}</button>
-          </form>
         </div>
       </div>
     </div>
