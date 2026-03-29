@@ -23,12 +23,12 @@ function ChatRoom() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/users/friends/${user.id}`);
+        const res = await fetch(`https://securechat-u1nk.onrender.com/api/users/friends/${user.id}`);
         const friendsList = await res.json();
         const friend = friendsList.find(f => f._id === friendId);
         if (friend) setFriendDetails(friend);
         
-        const histRes = await fetch(`http://localhost:3000/api/messages/history/${user.id}/${friendId}`);
+        const histRes = await fetch(`https://securechat-u1nk.onrender.com/api/messages/history/${user.id}/${friendId}`);
         const histData = await histRes.json();
         setMessages(histData);
         

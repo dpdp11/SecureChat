@@ -37,7 +37,7 @@ function Dashboard() {
 
   const fetchFriends = async () => {
     try {
-      const res = await fetch(`http://localhost:3000/api/users/friends/${user.id}`);
+      const res = await fetch(`https://securechat-u1nk.onrender.com/api/users/friends/${user.id}`);
       const data = await res.json();
       setFriends(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -47,7 +47,7 @@ function Dashboard() {
 
   const fetchUnreadCounts = async () => {
     try {
-      const res = await fetch(`http://localhost:3000/api/messages/unread/${user.id}`);
+      const res = await fetch(`https://securechat-u1nk.onrender.com/api/messages/unread/${user.id}`);
       const data = await res.json();
       setUnreadCounts(data || {});
     } catch (err) {
@@ -60,7 +60,7 @@ function Dashboard() {
     if (!searchQuery.trim()) return;
     try {
       setHasSearched(true);
-      const res = await fetch(`http://localhost:3000/api/users/search?q=${searchQuery}`);
+      const res = await fetch(`https://securechat-u1nk.onrender.com/api/users/search?q=${searchQuery}`);
       const data = await res.json();
       setSearchResults(data.filter(u => u._id !== user.id)); 
     } catch (err) {
@@ -70,7 +70,7 @@ function Dashboard() {
 
   const addFriend = async (friendId) => {
     try {
-      await fetch('http://localhost:3000/api/users/add-friend', {
+      await fetch('https://securechat-u1nk.onrender.com/api/users/add-friend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id, friendId })
