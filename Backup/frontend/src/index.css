@@ -241,34 +241,3 @@ body {
   from { opacity: 0; transform: translateX(10px); }
   to { opacity: 1; transform: translateX(0); }
 }
-
-@media (max-width: 768px) {
-  .dashboard-box {
-    flex-direction: column !important;
-    gap: 1rem !important;
-  }
-  .glass-panel {
-    padding: 1rem !important;
-  }
-  .dashboard-container {
-    padding-top: 1rem !important;
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-  }
-  .chat-container {
-    padding: 0 !important;
-  }
-  .header {
-    border-radius: 0 !important;
-    margin-bottom: 0 !important;
-  }
-  .messages-area {
-    border-radius: 0 !important;
-  }
-  .dashboard-box > div:nth-child(2) {
-    border-left: none !important;
-    border-top: 1px solid var(--glass-border);
-    padding-left: 0 !important;
-    padding-top: 1rem !important;
-  }
-}

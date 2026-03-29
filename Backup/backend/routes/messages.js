@@ -53,20 +53,4 @@ router.get('/unread/:userId', async (req, res) => {
   }
 });
 
-// Delete history
-router.delete('/history/:userId/:friendId', async (req, res) => {
-  try {
-    const { userId, friendId } = req.params;
-    await Message.deleteMany({
-      $or: [
-        { sender: userId, receiver: friendId },
-        { sender: friendId, receiver: userId }
-      ]
-    });
-    res.json({ message: 'Chat deleted' });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 module.exports = router;
